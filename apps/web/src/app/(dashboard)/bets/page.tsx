@@ -9,9 +9,11 @@ interface Bet {
   away_team: string
   stake: number
   odds: number
+  selection: string
   status: string
   placed_at: string
   settled_at: string | null
+  game_id: number | null
 }
 
 interface PaginatedBets {
@@ -40,6 +42,15 @@ interface Stats {
   time_series: TimeSeriesPoint[]
 }
 
+interface GameResult {
+  id: number
+  home_team: string
+  away_team: string
+  date: string
+  goals_home: number
+  goals_away: number
+}
+
 const BASE = 'http://localhost:8000'
 const PAGE_SIZE = 10
 
@@ -54,6 +65,12 @@ function formatDT(iso: string) {
   })
 }
 
+function formatDate(iso: string) {
+  return new Date(iso).toLocaleDateString('en-GB', {
+    day: 'numeric', month: 'short', year: 'numeric',
+  })
+}
+
 const statusColors: Record<string, string> = {
   open: 'bg-blue-500/20 text-blue-400',
   won: 'bg-green-500/20 text-green-400',
@@ -63,58 +80,6 @@ const statusColors: Record<string, string> = {
 
 function Skeleton({ className = '' }: { className?: string }) {
   return <div className={`animate-pulse rounded bg-neutral-800 ${className}`} />
-}
-
-function TeamInput({
-  value, onChange, placeholder,
-}: {
-  value: string
-  onChange: (v: string) => void
-  placeholder: string
-}) {
-  const [suggestions, setSuggestions] = useState<{ id: number; name: string }[]>([])
-  const [focused, setFocused] = useState(false)
-  const timer = useRef<ReturnType<typeof setTimeout>>()
-
-  const fetchSuggestions = useCallback(async (q: string) => {
-    if (q.length < 1) { setSuggestions([]); return }
-    const res = await fetch(`${BASE}/teams?q=${encodeURIComponent(q)}`)
-    if (res.ok) setSuggestions(await res.json())
-  }, [])
-
-  useEffect(() => {
-    clearTimeout(timer.current)
-    timer.current = setTimeout(() => fetchSuggestions(value), 150)
-    return () => clearTimeout(timer.current)
-  }, [value, fetchSuggestions])
-
-  return (
-    <div className="relative">
-      <input
-        type="text"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setTimeout(() => setFocused(false), 200)}
-        placeholder={placeholder}
-        className="w-full rounded border border-neutral-700 bg-neutral-800 px-2.5 py-1.5 text-sm text-neutral-100"
-      />
-      {focused && suggestions.length > 0 && (
-        <div className="absolute left-0 right-0 top-full z-10 mt-0.5 rounded border border-neutral-700 bg-neutral-900 shadow-lg">
-          {suggestions.map((s) => (
-            <button
-              key={s.id}
-              type="button"
-              onMouseDown={() => onChange(s.name)}
-              className="block w-full px-3 py-1.5 text-left text-sm text-neutral-200 hover:bg-neutral-800"
-            >
-              {s.name}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  )
 }
 
 function MetricBox({ label, value, color = 'text-neutral-100' }: { label: string; value: string | number; color?: string }) {
@@ -134,8 +99,17 @@ export default function BetsPage() {
   const [betsError, setBetsError] = useState('')
   const [statsError, setStatsError] = useState('')
   const [formError, setFormError] = useState('')
+
+  const [gameQ, setGameQ] = useState('')
+  const [gameSuggestions, setGameSuggestions] = useState<GameResult[]>([])
+  const [selectedGame, setSelectedGame] = useState<GameResult | null>(null)
+  const [showGameDropdown, setShowGameDropdown] = useState(false)
+  const [searchEmpty, setSearchEmpty] = useState(false)
+  const [showManual, setShowManual] = useState(false)
+  const gameTimer = useRef<ReturnType<typeof setTimeout>>()
   const [homeTeam, setHomeTeam] = useState('')
   const [awayTeam, setAwayTeam] = useState('')
+  const [selection, setSelection] = useState('home')
   const [stake, setStake] = useState('')
   const [odds, setOdds] = useState('')
   const [placedAt, setPlacedAt] = useState('')
@@ -143,6 +117,40 @@ export default function BetsPage() {
   const [placedMsg, setPlacedMsg] = useState<{ home: string; away: string; time: string } | null>(null)
   const [offset, setOffset] = useState(0)
   const token = getToken()
+
+  useEffect(() => {
+    clearTimeout(gameTimer.current)
+    if (selectedGame || gameQ.length < 1) { setGameSuggestions([]); setSearchEmpty(false); return }
+    gameTimer.current = setTimeout(async () => {
+      const res = await fetch(`${BASE}/games/search?q=${encodeURIComponent(gameQ)}`)
+      if (res.ok) {
+        const data: GameResult[] = await res.json()
+        setGameSuggestions(data)
+        setSearchEmpty(data.length === 0)
+      }
+    }, 200)
+    return () => clearTimeout(gameTimer.current)
+  }, [gameQ, selectedGame])
+
+  const pickGame = (g: GameResult) => {
+    setSelectedGame(g)
+    setHomeTeam(g.home_team)
+    setAwayTeam(g.away_team)
+    setPlacedAt(g.date.slice(0, 10))
+    setGameQ(`${g.home_team} vs ${g.away_team}`)
+    setGameSuggestions([])
+    setSearchEmpty(false)
+    setShowManual(false)
+  }
+
+  const clearGame = () => {
+    setSelectedGame(null)
+    setHomeTeam('')
+    setAwayTeam('')
+    setPlacedAt('')
+    setGameQ('')
+    setShowManual(true)
+  }
 
   const fetchBets = useCallback(async (pageOffset: number) => {
     if (!token) return
@@ -169,7 +177,8 @@ export default function BetsPage() {
   useEffect(() => { fetchBets(0); fetchStats() }, [fetchBets, fetchStats])
 
   const handlePlaceBet = async () => {
-    if (!token || !homeTeam || !awayTeam || !stake || !odds) return
+    if (!token || !stake || !odds) return
+    if (!homeTeam || !awayTeam) return
     setPlacing(true)
     setFormError('')
     const res = await fetch(`${BASE}/bets`, {
@@ -180,7 +189,9 @@ export default function BetsPage() {
         away_team: awayTeam,
         stake: Number(stake),
         odds: Number(odds),
+        selection,
         placed_at: placedAt ? new Date(placedAt).toISOString() : null,
+        game_id: selectedGame?.id ?? null,
       }),
     })
     setPlacing(false)
@@ -191,6 +202,10 @@ export default function BetsPage() {
       setStake('')
       setOdds('')
       setPlacedAt('')
+      setSelection('home')
+      setGameQ('')
+      setSelectedGame(null)
+      setShowManual(false)
       setPlacedMsg({ home: created.home_team, away: created.away_team, time: formatDT(created.placed_at) })
       setTimeout(() => setPlacedMsg(null), 4000)
       setOffset(0)
@@ -213,6 +228,15 @@ export default function BetsPage() {
 
   const totalPages = bets ? Math.ceil(bets.total / PAGE_SIZE) : 0
   const currentPage = Math.floor(offset / PAGE_SIZE) + 1
+
+  const deducedResult = (() => {
+    if (!selectedGame) return null
+    const { goals_home, goals_away } = selectedGame
+    if (goals_home == null || goals_away == null) return 'open'
+    if (goals_home > goals_away) return selection === 'home' ? 'won' : 'lost'
+    if (goals_home < goals_away) return selection === 'away' ? 'won' : 'lost'
+    return selection === 'draw' ? 'won' : 'lost'
+  })()
 
   if (!token) {
     return (
@@ -237,35 +261,114 @@ export default function BetsPage() {
 
       <div className="mb-8 rounded-lg border border-neutral-800 bg-neutral-900/50 p-4">
         <h2 className="mb-3 text-sm font-semibold text-neutral-300">Track a Bet</h2>
+
         <div className="flex flex-wrap items-end gap-3">
-          <div className="w-44">
-            <label className="mb-1 block text-xs text-neutral-500">Home Team</label>
-            <TeamInput value={homeTeam} onChange={setHomeTeam} placeholder="e.g. Bayern Munich" />
+          <div className="relative w-80">
+            <label className="mb-1 block text-xs text-neutral-500">Search Game {selectedGame ? '(linked)' : ''}</label>
+            <input
+              type="text"
+              value={gameQ}
+              onChange={(e) => { setGameQ(e.target.value); setSelectedGame(null); setSearchEmpty(false); setShowManual(false) }}
+              onFocus={() => setShowGameDropdown(true)}
+              onBlur={() => setTimeout(() => setShowGameDropdown(false), 200)}
+              placeholder="e.g. Bayern vs Dortmund"
+              className="w-full rounded border border-neutral-700 bg-neutral-800 px-2.5 py-1.5 text-sm text-neutral-100"
+            />
+            {showGameDropdown && gameSuggestions.length > 0 && (
+              <div className="absolute left-0 right-0 top-full z-10 mt-0.5 max-h-60 overflow-y-auto rounded border border-neutral-700 bg-neutral-900 shadow-lg">
+                {gameSuggestions.map((g) => (
+                  <button
+                    key={g.id}
+                    type="button"
+                    onMouseDown={() => pickGame(g)}
+                    className="block w-full px-3 py-2 text-left text-sm text-neutral-200 hover:bg-neutral-800"
+                  >
+                    <span className="font-medium">{g.home_team}</span>
+                    <span className="text-neutral-500"> vs </span>
+                    <span className="font-medium">{g.away_team}</span>
+                    <span className="ml-2 text-xs text-neutral-500">
+                      {g.goals_home}-{g.goals_away} &middot; {formatDate(g.date)}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {selectedGame && (
+              <p className="mt-1 text-xs text-emerald-400">
+                {selectedGame.home_team} {selectedGame.goals_home}-{selectedGame.goals_away} {selectedGame.away_team} &middot; {formatDate(selectedGame.date)}
+                <button onClick={clearGame} className="ml-2 text-neutral-500 hover:text-neutral-300">clear</button>
+              </p>
+            )}
+            {searchEmpty && !selectedGame && (
+              <p className="mt-1 text-xs text-neutral-500">
+                No games found.{' '}
+                <button onClick={() => setShowManual(true)} className="text-amber-400 hover:text-amber-300">
+                  Add game manually
+                </button>
+              </p>
+            )}
           </div>
-          <div className="w-44">
-            <label className="mb-1 block text-xs text-neutral-500">Away Team</label>
-            <TeamInput value={awayTeam} onChange={setAwayTeam} placeholder="e.g. Dortmund" />
+
+          {showManual && !selectedGame && (
+            <>
+              <div className="w-44">
+                <label className="mb-1 block text-xs text-neutral-500">Home Team (manual)</label>
+                <input type="text" value={homeTeam} onChange={(e) => setHomeTeam(e.target.value)}
+                  placeholder="e.g. Bayern Munich"
+                  className="w-full rounded border border-neutral-700 bg-neutral-800 px-2.5 py-1.5 text-sm text-neutral-100" />
+              </div>
+              <div className="w-44">
+                <label className="mb-1 block text-xs text-neutral-500">Away Team (manual)</label>
+                <input type="text" value={awayTeam} onChange={(e) => setAwayTeam(e.target.value)}
+                  placeholder="e.g. Dortmund"
+                  className="w-full rounded border border-neutral-700 bg-neutral-800 px-2.5 py-1.5 text-sm text-neutral-100" />
+              </div>
+              <div className="w-44">
+                <label className="mb-1 block text-xs text-neutral-500">Bet Taken</label>
+                <input type="date" value={placedAt} onChange={(e) => setPlacedAt(e.target.value)}
+                  className="w-full rounded border border-neutral-700 bg-neutral-800 px-2.5 py-1.5 text-sm text-neutral-100 [color-scheme:dark]" />
+              </div>
+            </>
+          )}
+
+          <div className="w-28">
+            <label className="mb-1 block text-xs text-neutral-500">Selection</label>
+            <select value={selection} onChange={(e) => setSelection(e.target.value)}
+              className="w-full rounded border border-neutral-700 bg-neutral-800 px-2.5 py-1.5 text-sm text-neutral-100">
+              <option value="home">Home</option>
+              <option value="draw">Draw</option>
+              <option value="away">Away</option>
+            </select>
           </div>
+
           <div className="w-24">
             <label className="mb-1 block text-xs text-neutral-500">Odd</label>
             <input type="number" step="0.01" placeholder="1.80" value={odds} onChange={(e) => setOdds(e.target.value)}
               className="w-full rounded border border-neutral-700 bg-neutral-800 px-2.5 py-1.5 text-sm text-neutral-100" />
           </div>
-          <div className="w-44">
-            <label className="mb-1 block text-xs text-neutral-500">Bet Taken</label>
-            <input type="date" value={placedAt} onChange={(e) => setPlacedAt(e.target.value)}
-              className="w-full rounded border border-neutral-700 bg-neutral-800 px-2.5 py-1.5 text-sm text-neutral-100 [color-scheme:dark]" />
-          </div>
+
           <div className="w-24">
             <label className="mb-1 block text-xs text-neutral-500">Value (€)</label>
             <input type="number" placeholder="50" value={stake} onChange={(e) => setStake(e.target.value)}
               className="w-full rounded border border-neutral-700 bg-neutral-800 px-2.5 py-1.5 text-sm text-neutral-100" />
           </div>
+
           <button onClick={handlePlaceBet} disabled={placing}
             className="rounded bg-amber-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-amber-500 disabled:opacity-50">
             {placing ? 'Adding...' : 'Track Bet'}
           </button>
         </div>
+
+        {deducedResult && (
+          <p className="mt-2 text-xs">
+            Result:{' '}
+            <span className={deducedResult === 'won' ? 'text-green-400' : deducedResult === 'lost' ? 'text-red-400' : 'text-blue-400'}>
+              {deducedResult.toUpperCase()}
+            </span>
+            {deducedResult !== 'open' && ' (auto-deduced from game)'}
+          </p>
+        )}
+
         {formError && (
           <p className="mt-2 text-xs text-red-400">{formError}</p>
         )}
@@ -304,6 +407,7 @@ export default function BetsPage() {
               <thead>
                 <tr className="border-b border-neutral-800 bg-neutral-900">
                   <th className="px-3 py-2.5 font-medium text-neutral-400">Match</th>
+                  <th className="px-3 py-2.5 font-medium text-neutral-400 text-right">Pick</th>
                   <th className="px-3 py-2.5 font-medium text-neutral-400 text-right">Stake</th>
                   <th className="px-3 py-2.5 font-medium text-neutral-400 text-right">Odds</th>
                   <th className="px-3 py-2.5 font-medium text-neutral-400 text-right">To Win</th>
@@ -316,13 +420,14 @@ export default function BetsPage() {
               <tbody>
                 {bets.items.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-3 py-8 text-center text-sm text-neutral-500">
+                    <td colSpan={9} className="px-3 py-8 text-center text-sm text-neutral-500">
                       No bets yet. Track your first bet above.
                     </td>
                   </tr>
                 ) : bets.items.map(bet => (
                   <tr key={bet.id} className="border-b border-neutral-800 last:border-0">
                     <td className="px-3 py-2.5 font-medium">{bet.home_team} vs {bet.away_team}</td>
+                    <td className="px-3 py-2.5 text-right text-xs text-neutral-400 uppercase">{bet.selection}</td>
                     <td className="px-3 py-2.5 text-right font-mono tabular-nums">€{bet.stake.toFixed(2)}</td>
                     <td className="px-3 py-2.5 text-right font-mono tabular-nums">{bet.odds.toFixed(2)}</td>
                     <td className="px-3 py-2.5 text-right font-mono tabular-nums text-neutral-100">

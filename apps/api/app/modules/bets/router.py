@@ -29,7 +29,9 @@ async def create_bet(
         payload.away_team,
         payload.stake,
         payload.odds,
+        payload.selection,
         payload.placed_at,
+        payload.game_id,
     )
     return bet
 

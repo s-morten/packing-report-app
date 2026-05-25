@@ -4,17 +4,26 @@ from pydantic import BaseModel, field_validator
 
 
 class PlaceBetRequest(BaseModel):
-    home_team: str
-    away_team: str
+    home_team: str = ""
+    away_team: str = ""
     stake: float
     odds: float
+    selection: str = "home"
     placed_at: datetime | None = None
+    game_id: int | None = None
 
     @field_validator("stake", "odds")
     @classmethod
     def positive(cls, v: float) -> float:
         if v <= 0:
             raise ValueError("Must be positive")
+        return v
+
+    @field_validator("selection")
+    @classmethod
+    def valid_selection(cls, v: str) -> str:
+        if v not in ("home", "away", "draw"):
+            raise ValueError("Selection must be home, away, or draw")
         return v
 
 
@@ -36,9 +45,11 @@ class BetResponse(BaseModel):
     away_team: str
     stake: float
     odds: float
+    selection: str
     status: str
     placed_at: datetime
     settled_at: datetime | None
+    game_id: int | None
     created_at: datetime
     updated_at: datetime | None
 

@@ -11,6 +11,7 @@ from app.models.market_outcome import MarketOutcome
 from app.models.odds_snapshot import OddsSnapshot
 from app.models.user import User
 from app.models.bet import Bet
+from app.models.game import Game
 
 __all__ = [
     "Base",
@@ -24,4 +25,5 @@ __all__ = [
     "OddsSnapshot",
     "User",
     "Bet",
+    "Game",
 ]

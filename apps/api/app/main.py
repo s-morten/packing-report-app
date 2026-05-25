@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 
 from app.core.config import settings
 from app.core.database import engine
@@ -12,6 +13,7 @@ from app.modules.auth.router import router as auth_router
 from app.modules.odds.router import router as odds_router
 from app.modules.bets.router import router as bets_router
 from app.modules.analytics.router import router as analytics_router
+from app.modules.games.router import router as games_router
 
 
 @asynccontextmanager
@@ -19,6 +21,7 @@ async def lifespan(app: FastAPI):
     setup_logging()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
     yield
     await engine.dispose()
 
@@ -43,6 +46,7 @@ app.include_router(auth_router, prefix="/auth", tags=["auth"])
 app.include_router(odds_router)
 app.include_router(bets_router)
 app.include_router(analytics_router)
+app.include_router(games_router)
 
 
 @app.get("/health")

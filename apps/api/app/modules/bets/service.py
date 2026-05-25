@@ -4,8 +4,16 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundException, UnauthorizedException
-from app.models import Bet
+from app.models import Bet, Game
 from app.modules.bets.schemas import BetResponse
+
+
+def _deduce_status(goals_home: int, goals_away: int, selection: str) -> str:
+    if goals_home > goals_away:
+        return "won" if selection == "home" else "lost"
+    if goals_home < goals_away:
+        return "won" if selection == "away" else "lost"
+    return "won" if selection == "draw" else "lost"
 
 
 async def place_bet(
@@ -15,16 +23,37 @@ async def place_bet(
     away_team: str,
     stake: float,
     odds: float,
+    selection: str = "home",
     placed_at: datetime | None = None,
+    game_id: int | None = None,
 ) -> Bet:
+    status = "open"
+    settled_at = None
+
+    if game_id is not None:
+        result = await db.execute(select(Game).where(Game.id == game_id))
+        game = result.scalar_one_or_none()
+        if game:
+            home_team = game.home_team
+            away_team = game.away_team
+            if placed_at is None:
+                placed_at = game.date
+            if game.goals_home is not None and game.goals_away is not None:
+                status = _deduce_status(game.goals_home, game.goals_away, selection)
+                if status != "open":
+                    settled_at = datetime.now(timezone.utc)
+
     bet = Bet(
         user_id=user_id,
         home_team=home_team,
         away_team=away_team,
         stake=stake,
         odds=odds,
-        status="open",
+        selection=selection,
+        status=status,
+        settled_at=settled_at,
         placed_at=placed_at or datetime.now(timezone.utc),
+        game_id=game_id,
     )
     db.add(bet)
     await db.commit()
