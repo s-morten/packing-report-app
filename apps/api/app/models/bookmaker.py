@@ -16,4 +16,3 @@ class Bookmaker(Base, TimestampMixin):
     odds_snapshots: Mapped[list["OddsSnapshot"]] = relationship(
         back_populates="bookmaker"
     )
-    bets: Mapped[list["Bet"]] = relationship(back_populates="bookmaker")

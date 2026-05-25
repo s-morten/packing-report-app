@@ -13,13 +13,8 @@ class Bet(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("user.id"), nullable=False)
-    bookmaker_id: Mapped[int] = mapped_column(
-        ForeignKey("bookmaker.id"), nullable=False
-    )
-    event_id: Mapped[int] = mapped_column(ForeignKey("event.id"), nullable=False)
-    market_outcome_id: Mapped[int] = mapped_column(
-        ForeignKey("market_outcome.id"), nullable=False
-    )
+    home_team: Mapped[str] = mapped_column(String(200), nullable=False)
+    away_team: Mapped[str] = mapped_column(String(200), nullable=False)
     stake: Mapped[float] = mapped_column(Float, nullable=False)
     odds: Mapped[float] = mapped_column(Float, nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="open")
@@ -27,6 +22,3 @@ class Bet(Base, TimestampMixin):
     settled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     user: Mapped["User"] = relationship(back_populates="bets")
-    bookmaker: Mapped["Bookmaker"] = relationship(back_populates="bets")
-    event: Mapped["Event"] = relationship(back_populates="bets")
-    market_outcome: Mapped["MarketOutcome"] = relationship(back_populates="bets")

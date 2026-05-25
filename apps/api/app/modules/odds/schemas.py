@@ -29,12 +29,19 @@ class EventResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class OutcomeOdds(BaseModel):
+    market_outcome_id: int
+    name: str
+    odds: float
+
+
 class BookmakerOdds(BaseModel):
     bookmaker_id: int
     bookmaker_name: str
     home: float
     draw: float
     away: float
+    outcomes: list[OutcomeOdds]
 
 
 class OddsResponse(BaseModel):

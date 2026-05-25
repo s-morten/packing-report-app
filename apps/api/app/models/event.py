@@ -29,4 +29,3 @@ class Event(Base, TimestampMixin):
         foreign_keys=[away_team_id], back_populates="away_events"
     )
     odds_snapshots: Mapped[list["OddsSnapshot"]] = relationship(back_populates="event")
-    bets: Mapped[list["Bet"]] = relationship(back_populates="event")

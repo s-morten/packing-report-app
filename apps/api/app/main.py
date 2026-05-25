@@ -10,6 +10,8 @@ from app.core.logging import setup_logging
 from app.models.base import Base
 from app.modules.auth.router import router as auth_router
 from app.modules.odds.router import router as odds_router
+from app.modules.bets.router import router as bets_router
+from app.modules.analytics.router import router as analytics_router
 
 
 @asynccontextmanager
@@ -39,6 +41,8 @@ register_exception_handlers(app)
 
 app.include_router(auth_router, prefix="/auth", tags=["auth"])
 app.include_router(odds_router)
+app.include_router(bets_router)
+app.include_router(analytics_router)
 
 
 @app.get("/health")

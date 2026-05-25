@@ -18,4 +18,3 @@ class MarketOutcome(Base, TimestampMixin):
     odds_snapshots: Mapped[list["OddsSnapshot"]] = relationship(
         back_populates="market_outcome"
     )
-    bets: Mapped[list["Bet"]] = relationship(back_populates="market_outcome")
