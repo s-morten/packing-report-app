@@ -5,8 +5,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.security import get_current_user_id
-from app.modules.analytics.schemas import StatsResponse
-from app.modules.analytics.service import compute_stats
+from app.modules.analytics.schemas import StatsResponse, TeamAnalysisResponse
+from app.modules.analytics.service import compute_stats, compute_team_analysis
 
 router = APIRouter(prefix="/stats", tags=["analytics"])
 
@@ -29,3 +29,11 @@ async def get_stats(
 
     stats = await compute_stats(db, user_id, from_dt, to_dt)
     return StatsResponse(**stats)
+
+
+@router.get("/teams", response_model=TeamAnalysisResponse)
+async def get_team_analysis(
+    user_id: int = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    return await compute_team_analysis(db, user_id)

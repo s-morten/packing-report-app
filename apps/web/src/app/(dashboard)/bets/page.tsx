@@ -51,6 +51,33 @@ interface GameResult {
   goals_away: number
 }
 
+interface TeamStatsItem {
+  team: string
+  total_bets: number
+  won: number
+  lost: number
+  money_won: number
+  money_lost: number
+}
+
+interface SelectionStatsItem {
+  selection: string
+  total_bets: number
+  won: number
+  lost: number
+  money_won: number
+  money_lost: number
+}
+
+interface OddsBucketItem {
+  bucket: string
+  total_bets: number
+  won: number
+  lost: number
+  money_won: number
+  money_lost: number
+}
+
 const BASE = 'http://localhost:8000'
 const PAGE_SIZE = 10
 
@@ -99,6 +126,8 @@ export default function BetsPage() {
   const [betsError, setBetsError] = useState('')
   const [statsError, setStatsError] = useState('')
   const [formError, setFormError] = useState('')
+  const [teamAnalysis, setTeamAnalysis] = useState<{ by_team: TeamStatsItem[]; by_selection: SelectionStatsItem[]; by_odds: OddsBucketItem[] } | null>(null)
+  const [loadingTeamAnalysis, setLoadingTeamAnalysis] = useState(true)
 
   const [gameQ, setGameQ] = useState('')
   const [gameSuggestions, setGameSuggestions] = useState<GameResult[]>([])
@@ -174,7 +203,15 @@ export default function BetsPage() {
     else setStatsError('Failed to load stats')
   }, [token])
 
-  useEffect(() => { fetchBets(0); fetchStats() }, [fetchBets, fetchStats])
+  const fetchTeamAnalysis = useCallback(async () => {
+    if (!token) return
+    setLoadingTeamAnalysis(true)
+    const res = await fetch(`${BASE}/stats/teams`, { headers: { Authorization: `Bearer ${token}` } })
+    setLoadingTeamAnalysis(false)
+    if (res.ok) setTeamAnalysis(await res.json())
+  }, [token])
+
+  useEffect(() => { fetchBets(0); fetchStats(); fetchTeamAnalysis() }, [fetchBets, fetchStats, fetchTeamAnalysis])
 
   const handlePlaceBet = async () => {
     if (!token || !stake || !odds) return
@@ -211,6 +248,7 @@ export default function BetsPage() {
       setOffset(0)
       fetchBets(0)
       fetchStats()
+      fetchTeamAnalysis()
     } else {
       const err = await res.json()
       setFormError(err.error?.message || 'Failed to place bet')
@@ -223,7 +261,7 @@ export default function BetsPage() {
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ status }),
     })
-    if (res.ok) { fetchBets(offset); fetchStats() }
+    if (res.ok) { fetchBets(offset); fetchStats(); fetchTeamAnalysis() }
   }
 
   const totalPages = bets ? Math.ceil(bets.total / PAGE_SIZE) : 0
@@ -545,6 +583,91 @@ export default function BetsPage() {
               </ResponsiveContainer>
             </div>
           )}
+        </div>
+      )}
+
+      {loadingTeamAnalysis ? (
+        <div className="mb-8">
+          <Skeleton className="mb-3 h-4 w-32" />
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="rounded-lg border border-neutral-800 bg-neutral-900/50 p-4">
+                <Skeleton className="mb-2 h-3 w-16" />
+                <Skeleton className="h-6 w-20" />
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : teamAnalysis && (
+        <div className="mb-8">
+          <h2 className="mb-3 text-sm font-semibold text-neutral-300">Analysis</h2>
+          <div className="overflow-x-auto rounded-lg border border-neutral-800">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-neutral-800 bg-neutral-900">
+                  <th className="px-3 py-2 font-medium text-neutral-400">Category</th>
+                  <th className="px-3 py-2 font-medium text-neutral-400 text-right">Bets</th>
+                  <th className="px-3 py-2 font-medium text-neutral-400 text-right">Won</th>
+                  <th className="px-3 py-2 font-medium text-neutral-400 text-right">Lost</th>
+                  <th className="px-3 py-2 font-medium text-neutral-400 text-right">Money Won</th>
+                  <th className="px-3 py-2 font-medium text-neutral-400 text-right">Money Lost</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr className="border-b border-neutral-800 bg-neutral-900/30">
+                  <td className="px-3 py-2 text-xs font-semibold text-neutral-500" colSpan={6}>By Team</td>
+                </tr>
+                {teamAnalysis.by_team.map(t => (
+                  <tr key={t.team} className="border-b border-neutral-800 last:border-0">
+                    <td className="px-3 py-2 font-medium">{t.team}</td>
+                    <td className="px-3 py-2 text-right font-mono tabular-nums">{t.total_bets}</td>
+                    <td className="px-3 py-2 text-right font-mono tabular-nums text-green-400">{t.won}</td>
+                    <td className="px-3 py-2 text-right font-mono tabular-nums text-red-400">{t.lost}</td>
+                    <td className="px-3 py-2 text-right font-mono tabular-nums text-green-400">
+                      +€{t.money_won.toFixed(2)}
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono tabular-nums text-red-400">
+                      -€{t.money_lost.toFixed(2)}
+                    </td>
+                  </tr>
+                ))}
+                <tr className="border-b border-neutral-800 bg-neutral-900/30">
+                  <td className="px-3 py-2 text-xs font-semibold text-neutral-500" colSpan={6}>By Selection</td>
+                </tr>
+                {teamAnalysis.by_selection.map(s => (
+                  <tr key={s.selection} className="border-b border-neutral-800 last:border-0">
+                    <td className="px-3 py-2 font-medium capitalize">{s.selection}</td>
+                    <td className="px-3 py-2 text-right font-mono tabular-nums">{s.total_bets}</td>
+                    <td className="px-3 py-2 text-right font-mono tabular-nums text-green-400">{s.won}</td>
+                    <td className="px-3 py-2 text-right font-mono tabular-nums text-red-400">{s.lost}</td>
+                    <td className="px-3 py-2 text-right font-mono tabular-nums text-green-400">
+                      +€{s.money_won.toFixed(2)}
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono tabular-nums text-red-400">
+                      -€{s.money_lost.toFixed(2)}
+                    </td>
+                  </tr>
+                ))}
+                <tr className="border-b border-neutral-800 bg-neutral-900/30">
+                  <td className="px-3 py-2 text-xs font-semibold text-neutral-500" colSpan={6}>By Odds Range</td>
+                </tr>
+                {teamAnalysis.by_odds.map(o => (
+                  <tr key={o.bucket} className="border-b border-neutral-800 last:border-0">
+                    <td className="px-3 py-2 font-medium">{o.bucket}</td>
+                    <td className="px-3 py-2 text-right font-mono tabular-nums">{o.total_bets}</td>
+                    <td className="px-3 py-2 text-right font-mono tabular-nums text-green-400">{o.won}</td>
+                    <td className="px-3 py-2 text-right font-mono tabular-nums text-red-400">{o.lost}</td>
+                    <td className="px-3 py-2 text-right font-mono tabular-nums text-green-400">
+                      +€{o.money_won.toFixed(2)}
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono tabular-nums text-red-400">
+                      -€{o.money_lost.toFixed(2)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </section>

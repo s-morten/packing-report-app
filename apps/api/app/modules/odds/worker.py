@@ -20,7 +20,7 @@ class WorkerSettings:
     keep_result_duration = 60
     poll_delay = 3
     cron_jobs = [
-        cron(ingest_odds, minute={0, 15, 30, 45}),
+        cron(ingest_odds, hour=0, minute=0),
     ]
 
 
