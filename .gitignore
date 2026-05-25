@@ -1,0 +1,16 @@
+node_modules/
+.turbo/
+dist/
+.next/
+__pycache__/
+*.pyc
+.env
+.env.local
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+*.egg
+alembic/versions/*.pyc
+.mypy_cache/
+.ruff_cache/

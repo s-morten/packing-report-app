@@ -1,0 +1,95 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: latest
+
+      - name: Install JS dependencies
+        run: corepack enable && pnpm install --frozen-lockfile
+
+      - name: Lint JS
+        run: pnpm lint
+
+      - name: Lint Python
+        working-directory: apps/api
+        run: uv run ruff check .
+
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: latest
+
+      - name: Install JS dependencies
+        run: corepack enable && pnpm install --frozen-lockfile
+
+      - name: Typecheck JS
+        run: pnpm typecheck
+
+      - name: Typecheck Python
+        working-directory: apps/api
+        run: uv run mypy app/
+
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: packing
+          POSTGRES_PASSWORD: packing_test
+          POSTGRES_DB: packing_report_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: latest
+
+      - name: Run Python tests
+        working-directory: apps/api
+        run: uv run pytest
+        env:
+          DATABASE_URL: postgresql+asyncpg://packing:packing_test@localhost:5432/packing_report_test
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install JS dependencies
+        run: corepack enable && pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build

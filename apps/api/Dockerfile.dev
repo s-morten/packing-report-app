@@ -1,0 +1,13 @@
+FROM python:3.14-slim
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uv
+
+WORKDIR /app
+COPY pyproject.toml .
+RUN uv sync
+
+COPY app /app/app
+COPY alembic /app/alembic
+COPY alembic.ini /app/alembic.ini
+
+EXPOSE 8000
+CMD ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
