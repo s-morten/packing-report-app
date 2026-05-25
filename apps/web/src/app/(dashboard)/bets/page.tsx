@@ -41,6 +41,7 @@ interface Stats {
 }
 
 const BASE = 'http://localhost:8000'
+const PAGE_SIZE = 10
 
 function getToken() {
   if (typeof window === 'undefined') return ''
@@ -58,6 +59,10 @@ const statusColors: Record<string, string> = {
   won: 'bg-green-500/20 text-green-400',
   lost: 'bg-red-500/20 text-red-400',
   void: 'bg-neutral-500/20 text-neutral-400',
+}
+
+function Skeleton({ className = '' }: { className?: string }) {
+  return <div className={`animate-pulse rounded bg-neutral-800 ${className}`} />
 }
 
 function TeamInput({
@@ -124,6 +129,11 @@ function MetricBox({ label, value, color = 'text-neutral-100' }: { label: string
 export default function BetsPage() {
   const [bets, setBets] = useState<PaginatedBets | null>(null)
   const [stats, setStats] = useState<Stats | null>(null)
+  const [loadingBets, setLoadingBets] = useState(true)
+  const [loadingStats, setLoadingStats] = useState(true)
+  const [betsError, setBetsError] = useState('')
+  const [statsError, setStatsError] = useState('')
+  const [formError, setFormError] = useState('')
   const [homeTeam, setHomeTeam] = useState('')
   const [awayTeam, setAwayTeam] = useState('')
   const [stake, setStake] = useState('')
@@ -131,25 +141,37 @@ export default function BetsPage() {
   const [placedAt, setPlacedAt] = useState('')
   const [placing, setPlacing] = useState(false)
   const [placedMsg, setPlacedMsg] = useState<{ home: string; away: string; time: string } | null>(null)
+  const [offset, setOffset] = useState(0)
   const token = getToken()
 
-  const fetchBets = useCallback(async () => {
+  const fetchBets = useCallback(async (pageOffset: number) => {
     if (!token) return
-    const res = await fetch(`${BASE}/bets`, { headers: { Authorization: `Bearer ${token}` } })
+    setLoadingBets(true)
+    setBetsError('')
+    const res = await fetch(`${BASE}/bets?offset=${pageOffset}&limit=${PAGE_SIZE}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    setLoadingBets(false)
     if (res.ok) setBets(await res.json())
+    else setBetsError('Failed to load bets')
   }, [token])
 
   const fetchStats = useCallback(async () => {
     if (!token) return
+    setLoadingStats(true)
+    setStatsError('')
     const res = await fetch(`${BASE}/stats`, { headers: { Authorization: `Bearer ${token}` } })
+    setLoadingStats(false)
     if (res.ok) setStats(await res.json())
+    else setStatsError('Failed to load stats')
   }, [token])
 
-  useEffect(() => { fetchBets(); fetchStats() }, [fetchBets, fetchStats])
+  useEffect(() => { fetchBets(0); fetchStats() }, [fetchBets, fetchStats])
 
   const handlePlaceBet = async () => {
     if (!token || !homeTeam || !awayTeam || !stake || !odds) return
     setPlacing(true)
+    setFormError('')
     const res = await fetch(`${BASE}/bets`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -171,11 +193,12 @@ export default function BetsPage() {
       setPlacedAt('')
       setPlacedMsg({ home: created.home_team, away: created.away_team, time: formatDT(created.placed_at) })
       setTimeout(() => setPlacedMsg(null), 4000)
-      fetchBets()
+      setOffset(0)
+      fetchBets(0)
       fetchStats()
     } else {
       const err = await res.json()
-      alert(err.error?.message || 'Failed to place bet')
+      setFormError(err.error?.message || 'Failed to place bet')
     }
   }
 
@@ -185,8 +208,11 @@ export default function BetsPage() {
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ status }),
     })
-    if (res.ok) { fetchBets(); fetchStats() }
+    if (res.ok) { fetchBets(offset); fetchStats() }
   }
+
+  const totalPages = bets ? Math.ceil(bets.total / PAGE_SIZE) : 0
+  const currentPage = Math.floor(offset / PAGE_SIZE) + 1
 
   if (!token) {
     return (
@@ -240,11 +266,38 @@ export default function BetsPage() {
             {placing ? 'Adding...' : 'Track Bet'}
           </button>
         </div>
+        {formError && (
+          <p className="mt-2 text-xs text-red-400">{formError}</p>
+        )}
       </div>
 
-      {bets && (
+      <h2 className="mb-3 text-sm font-semibold text-neutral-300">Bet History</h2>
+
+      {betsError && (
+        <div className="mb-4 rounded-lg border border-red-800 bg-red-900/30 px-4 py-2.5 text-sm text-red-400">
+          {betsError}
+        </div>
+      )}
+
+      {loadingBets ? (
+        <div className="overflow-hidden rounded-lg border border-neutral-800">
+          <div className="border-b border-neutral-800 bg-neutral-900 px-3 py-2.5">
+            <Skeleton className="h-4 w-96" />
+          </div>
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="flex gap-4 border-b border-neutral-800 px-3 py-3">
+              <Skeleton className="h-4 w-48" />
+              <Skeleton className="h-4 w-16" />
+              <Skeleton className="h-4 w-12" />
+              <Skeleton className="h-4 w-16" />
+              <Skeleton className="h-4 w-16" />
+              <Skeleton className="h-4 w-14" />
+              <Skeleton className="h-4 w-24" />
+            </div>
+          ))}
+        </div>
+      ) : bets && (
         <>
-          <h2 className="mb-3 text-sm font-semibold text-neutral-300">Bet History</h2>
           <p className="mb-3 text-sm text-neutral-500">{bets.total} bet{bets.total !== 1 ? 's' : ''}</p>
           <div className="overflow-x-auto rounded-lg border border-neutral-800">
             <table className="w-full text-left text-sm">
@@ -261,7 +314,13 @@ export default function BetsPage() {
                 </tr>
               </thead>
               <tbody>
-                {bets.items.map(bet => (
+                {bets.items.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="px-3 py-8 text-center text-sm text-neutral-500">
+                      No bets yet. Track your first bet above.
+                    </td>
+                  </tr>
+                ) : bets.items.map(bet => (
                   <tr key={bet.id} className="border-b border-neutral-800 last:border-0">
                     <td className="px-3 py-2.5 font-medium">{bet.home_team} vs {bet.away_team}</td>
                     <td className="px-3 py-2.5 text-right font-mono tabular-nums">€{bet.stake.toFixed(2)}</td>
@@ -297,10 +356,53 @@ export default function BetsPage() {
               </tbody>
             </table>
           </div>
+
+          {totalPages > 1 && (
+            <div className="mt-4 flex items-center justify-between text-sm">
+              <p className="text-neutral-500">
+                Page {currentPage} of {totalPages}
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => { const next = Math.max(0, offset - PAGE_SIZE); setOffset(next); fetchBets(next) }}
+                  disabled={offset === 0}
+                  className="rounded border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-700 disabled:opacity-40"
+                >
+                  Previous
+                </button>
+                <button
+                  onClick={() => { const next = offset + PAGE_SIZE; setOffset(next); fetchBets(next) }}
+                  disabled={offset + PAGE_SIZE >= bets.total}
+                  className="rounded border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-700 disabled:opacity-40"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
         </>
       )}
 
-      {stats && (
+      {statsError && (
+        <div className="mb-4 rounded-lg border border-red-800 bg-red-900/30 px-4 py-2.5 text-sm text-red-400">
+          {statsError}
+        </div>
+      )}
+
+      {loadingStats ? (
+        <div className="mb-8">
+          <Skeleton className="mb-3 h-4 w-24" />
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+            {Array.from({ length: 9 }).map((_, i) => (
+              <div key={i} className="rounded-lg border border-neutral-800 bg-neutral-900/50 p-4">
+                <Skeleton className="mb-2 h-3 w-16" />
+                <Skeleton className="h-6 w-20" />
+              </div>
+            ))}
+          </div>
+          <Skeleton className="mt-6 h-72 w-full rounded-lg" />
+        </div>
+      ) : stats && (
         <div className="mb-8">
           <h2 className="mb-3 text-sm font-semibold text-neutral-300">Performance</h2>
           <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">

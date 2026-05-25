@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from 'react'
 const navItems = [
   { label: 'Odds', href: '/odds' },
   { label: 'My Bets', href: '/bets' },
+  { label: 'Profile', href: '/profile' },
 ]
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {

@@ -46,3 +46,8 @@ async def refresh_access_token(refresh_token: str) -> tuple[str, str]:
     new_access = create_access_token(subject)
     new_refresh = create_refresh_token(subject)
     return new_access, new_refresh
+
+
+async def get_user_by_id(db: AsyncSession, user_id: int) -> User | None:
+    result = await db.execute(select(User).where(User.id == user_id))
+    return result.scalar_one_or_none()
